@@ -128,12 +128,21 @@ async def send_notification(
     await transportTarget.resolve()
 
     notifyName = lcd.configure(
-        snmpEngine, authData, transportTarget, notifyType, contextData.contextName
+        snmpEngine,
+        authData,
+        transportTarget,
+        notifyType,
+        contextData.contextName,
+        deferUsm=notifyType == "inform",
     )
 
     future = asyncio.get_running_loop().create_future()
 
-    ntforg.NotificationOriginator().sendVarBinds(
+    ntforg.NotificationOriginator(
+        prepareUserForTarget=lcd.getTargetUserCallback
+        if notifyType == "inform"
+        else None
+    ).sendVarBinds(
         snmpEngine,
         notifyName,
         contextData.contextEngineId,

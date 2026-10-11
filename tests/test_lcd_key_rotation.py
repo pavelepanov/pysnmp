@@ -78,6 +78,16 @@ def configured():
 
 
 class TestUsmCredentialsAreReRegistered:
+    def test_mutating_the_same_credentials_object_updates_the_keys(self, configured):
+        authData = UsmUserData("u1", "authkey111111", "privkey111111")
+        snmpEngine = configured(authData)
+        before = localizedKeys(snmpEngine, LOCALIZED_AUTH_KEY)
+
+        authData.authKey = "authkey222222"
+        configured(authData)
+
+        assert before != localizedKeys(snmpEngine, LOCALIZED_AUTH_KEY)
+
     def test_a_changed_auth_key_reaches_the_engine(self, configured):
         # The reported case: after a usmUserAuthKeyChange, or simply when an
         # application rotates credentials and builds a fresh UsmUserData, the

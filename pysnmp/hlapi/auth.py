@@ -329,9 +329,9 @@ class UsmUserData:
         See :RFC:`3414#section-2.5.1` for technical explanation.
 
     securityName: :py:class:`str`, :py:class:`~pysnmp.proto.rfc1902.OctetString`
-        Together with the snmpEngineID it identifies a row in the
-        *SNMP-USER-BASED-SM-MIB::usmUserTable* that is to be used
-        for securing the message.
+        Local name used to select the USM user for securing the message.
+        Defaults to *userName*. The USM row is indexed by *securityEngineId*
+        and *userName*; *securityName* is stored in that row.
 
         See :RFC:`3414#section-2.5.1` for technical explanation.
 
@@ -371,14 +371,22 @@ class UsmUserData:
 
     Notes
     -----
-    If :py:class:`~pysnmp.hlapi.usmKeyTypeLocalized` is used when
-    running a non-authoritative SNMP engine, USM key localization
-    mechanism is not invoked. As a consequence, local SNMP engine
-    configuration won't get automatically populated with remote SNMP
-    engine's *securityEngineId*.
+    High-level commands and INFORMs can share one
+    :py:class:`~pysnmp.hlapi.SnmpEngine` across devices with the same
+    *userName* and different keys. Each request retains its credentials
+    during discovery and registers them under the discovered device's
+    *securityEngineId*. Identical passphrases reuse their master keys;
+    localized keys remain specific to each device.
 
-    Therefore peer SNMP engine's *securityEngineId* must be added
-    to local configuration and associated with its localized keys.
+    Configuration is checked before sending. If user registration fails after
+    discovery, the request completes with the exception in *errorIndication*.
+
+    A single engine ID and username identify one USM user. A different
+    *securityName* does not create another user with that same identity.
+
+    With :py:class:`~pysnmp.hlapi.usmKeyTypeLocalized`, supply the peer's
+    *securityEngineId* that the keys were localized for. Such keys cannot
+    be localized again for a different engine ID.
 
     Alternatively, the magic *securityEngineId* value of five zeros
     (*0x0000000000*) can be used to refer to the localized keys that

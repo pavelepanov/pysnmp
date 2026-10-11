@@ -177,6 +177,15 @@ def __checkPrivBackend(privProtocol: Any) -> None:
         raise error.PySnmpError(cipherbackend.INSTALL_HINT)
 
 
+def _checkV3Protocols(authProtocol: Any, privProtocol: Any) -> None:
+    """Validate before discovery or writing a USM row."""
+    __checkPrivBackend(privProtocol)
+    if authProtocol not in authServices:
+        raise error.PySnmpError(f"Unknown auth protocol {authProtocol}")
+    __warnAboutProtocol(authProtocol, stacklevel=4)
+    __warnAboutProtocol(privProtocol, stacklevel=4)
+
+
 # Auth services
 authServices: dict[Any, Any] = {
     hmacmd5.HmacMd5.serviceID: hmacmd5.HmacMd5(),
@@ -296,7 +305,7 @@ def delV1System(snmpEngine: Any, communityIndex: str) -> None:
 
 
 def __cookV3UserInfo(
-    snmpEngine: Any, securityName: Any, securityEngineId: Any | None
+    snmpEngine: Any, userName: Any, securityEngineId: Any | None
 ) -> tuple[Any, Any, Any, Any, Any]:
     mibBuilder = snmpEngine.msgAndPduDsp.mibInstrumController.mibBuilder
 
@@ -308,12 +317,12 @@ def __cookV3UserInfo(
         securityEngineId = snmpEngineID.syntax.clone(securityEngineId)
 
     (usmUserEntry,) = mibBuilder.importSymbols("SNMP-USER-BASED-SM-MIB", "usmUserEntry")
-    tblIdx1 = usmUserEntry.getInstIdFromIndices(securityEngineId, securityName)
+    tblIdx1 = usmUserEntry.getInstIdFromIndices(securityEngineId, userName)
 
     (pysnmpUsmSecretEntry,) = mibBuilder.importSymbols(
         "PYSNMP-USM-MIB", "pysnmpUsmSecretEntry"
     )
-    tblIdx2 = pysnmpUsmSecretEntry.getInstIdFromIndices(securityName)
+    tblIdx2 = pysnmpUsmSecretEntry.getInstIdFromIndices(userName)
 
     return securityEngineId, usmUserEntry, tblIdx1, pysnmpUsmSecretEntry, tblIdx2
 
@@ -347,9 +356,7 @@ def addV3User(
 
     `contextEngineId` is deprecated and means `securityEngineId`.
     """
-    __checkPrivBackend(privProtocol)
-    __warnAboutProtocol(authProtocol, stacklevel=3)
-    __warnAboutProtocol(privProtocol, stacklevel=3)
+    _checkV3Protocols(authProtocol, privProtocol)
 
     mibBuilder = snmpEngine.msgAndPduDsp.mibInstrumController.mibBuilder
 
@@ -360,7 +367,9 @@ def addV3User(
         securityEngineId = contextEngineId
 
     (securityEngineId, usmUserEntry, tblIdx1, pysnmpUsmSecretEntry, tblIdx2) = (
-        __cookV3UserInfo(snmpEngine, securityName, securityEngineId)
+        # USM indexes users by engine ID and wire username (RFC 3414).
+        # securityName is the local mapping stored in column 3.
+        __cookV3UserInfo(snmpEngine, userName, securityEngineId)
     )
 
     # Load augmenting table before creating new row in base one
@@ -384,9 +393,6 @@ def addV3User(
             (usmUserEntry.name + (13,) + tblIdx1, "createAndGo"),
         )
     )
-
-    if authProtocol not in authServices:
-        raise error.PySnmpError(f"Unknown auth protocol {authProtocol}")
 
     (pysnmpUsmKeyType,) = mibBuilder.importSymbols(
         "__PYSNMP-USM-MIB", "pysnmpUsmKeyType"
@@ -477,7 +483,7 @@ def addV3User(
         f'userName "{userName}" securityName "{securityName}" authProtocol {authProtocol} '
         f'privProtocol {privProtocol} localAuthKey "{localAuthKey and localAuthKey.prettyPrint()}" localPrivKey "{localPrivKey and localPrivKey.prettyPrint()}" '
         f'masterAuthKey "{masterAuthKey and masterAuthKey.prettyPrint()}" masterPrivKey "{masterPrivKey and masterPrivKey.prettyPrint()}" authKey "{authKey and authKey.prettyPrint()}" '
-        f'privKey "{privKey and privKey.prettyPrint()}" by index securityName "{securityName}" securityEngineId '
+        f'privKey "{privKey and privKey.prettyPrint()}" by index userName "{userName}" securityEngineId '
         f'"{securityEngineId.prettyPrint()}"'
     )
 

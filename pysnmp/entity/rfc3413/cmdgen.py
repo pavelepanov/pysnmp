@@ -78,7 +78,11 @@ class CommandGenerator:
     sendReq: Callable[..., Any]
 
     def __init__(self, **options):
-        """Options are kept as given and read per request, not merged here."""
+        """Keep options, including a prepareUser hook run before each send.
+
+        The HLAPI uses the hook to register this request's credentials after
+        discovery, when the authoritative engine ID has become known.
+        """
         self.__options = options
         self.__pendingReqs = {}
 
@@ -165,6 +169,13 @@ class CommandGenerator:
             else:
                 reqPDU = origPdu
                 pduVersion = 1
+
+            if prepareUser := self.__options.get("prepareUser"):
+                try:
+                    prepareUser(snmpEngine, origTransportDomain, origTransportAddress)
+                except Exception as prepareError:  # noqa: BLE001 - complete the request if deferred configuration fails
+                    cbFun(snmpEngine, origSendRequestHandle, prepareError, None, cbCtx)
+                    return
 
             try:
                 sendPduHandle = snmpEngine.msgAndPduDsp.sendPdu(
@@ -296,6 +307,8 @@ class CommandGenerator:
         sendRequestHandle = getNextHandle()
 
         # 3.1
+        if prepareUser := self.__options.get("prepareUser"):
+            prepareUser(snmpEngine, transportDomain, transportAddress)
         sendPduHandle = snmpEngine.msgAndPduDsp.sendPdu(
             snmpEngine,
             transportDomain,

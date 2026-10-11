@@ -184,6 +184,9 @@ class NotificationOriginator:
 
         `snmpContext` is accepted for compatibility and is not used; the context comes
         from the notification target configuration.
+
+        The HLAPI supplies `prepareUserForTarget` to retain each INFORM receiver's
+        credentials through discovery, including notifications sent to several targets.
         """
         self.__pendingReqs = {}
         self.__pendingNotifications = {}
@@ -231,6 +234,7 @@ class NotificationOriginator:
             origRetryCount,
             origRetries,
             origDiscoveryRetries,
+            prepareUser,
         ) = self.__pendingReqs.pop(sendPduHandle)
 
         snmpEngine.transportDispatcher.jobFinished(id(self))
@@ -274,6 +278,13 @@ class NotificationOriginator:
             else:
                 reqPDU = origPdu
                 retryPduVersion = 1
+
+            if prepareUser:
+                try:
+                    prepareUser(snmpEngine, origTransportDomain, origTransportAddress)
+                except Exception as prepareError:  # noqa: BLE001 - complete the INFORM if deferred configuration fails
+                    cbFun(snmpEngine, sendRequestHandle, prepareError, None, cbCtx)
+                    return
 
             # 3.3.6a
             try:
@@ -330,6 +341,7 @@ class NotificationOriginator:
                 origRetryCount,
                 origRetries,
                 origDiscoveryRetries,
+                prepareUser,
             )
             return
 
@@ -379,6 +391,11 @@ class NotificationOriginator:
             sendRequestHandle = getNextHandle()
 
             # 3.3.6a
+            prepareUser = None
+            if prepareForTarget := self.__options.get("prepareUserForTarget"):
+                prepareUser = prepareForTarget(snmpEngine, targetName)
+            if prepareUser:
+                prepareUser(snmpEngine, transportDomain, transportAddress)
             sendPduHandle = snmpEngine.msgAndPduDsp.sendPdu(
                 snmpEngine,
                 transportDomain,
@@ -416,6 +433,7 @@ class NotificationOriginator:
                 retryCount,
                 0,
                 0,
+                prepareUser,
             )
             snmpEngine.transportDispatcher.jobStarted(id(self))
         else:
